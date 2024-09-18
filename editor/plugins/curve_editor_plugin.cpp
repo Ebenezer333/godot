@@ -36,11 +36,11 @@
 #include "core/os/keyboard.h"
 #include "editor/editor_interface.h"
 #include "editor/editor_node.h"
-#include "editor/editor_scale.h"
 #include "editor/editor_settings.h"
 #include "editor/editor_string_names.h"
 #include "editor/editor_undo_redo_manager.h"
 #include "editor/gui/editor_spin_slider.h"
+#include "editor/themes/editor_scale.h"
 #include "scene/gui/flow_container.h"
 #include "scene/gui/menu_button.h"
 #include "scene/gui/popup_menu.h"
@@ -118,8 +118,7 @@ void CurveEdit::_notification(int p_what) {
 				queue_redraw();
 			}
 		} break;
-		case NOTIFICATION_THEME_CHANGED:
-		case EditorSettings::NOTIFICATION_EDITOR_SETTINGS_CHANGED: {
+		case NOTIFICATION_THEME_CHANGED: {
 			float gizmo_scale = EDITOR_GET("interface/touchscreen/scale_gizmo_handles");
 			point_radius = Math::round(BASE_POINT_RADIUS * get_theme_default_base_scale() * gizmo_scale);
 			hover_radius = Math::round(BASE_HOVER_RADIUS * get_theme_default_base_scale() * gizmo_scale);
@@ -140,6 +139,9 @@ void CurveEdit::_notification(int p_what) {
 
 void CurveEdit::gui_input(const Ref<InputEvent> &p_event) {
 	ERR_FAIL_COND(p_event.is_null());
+	if (curve.is_null()) {
+		return;
+	}
 
 	Ref<InputEventKey> k = p_event;
 	if (k.is_valid()) {
@@ -225,7 +227,7 @@ void CurveEdit::gui_input(const Ref<InputEvent> &p_event) {
 			} else if (grabbing == GRAB_NONE) {
 				// Adding a new point. Insert a temporary point for the user to adjust, so it's not in the undo/redo.
 				Vector2 new_pos = get_world_pos(mpos).clamp(Vector2(0.0, curve->get_min_value()), Vector2(1.0, curve->get_max_value()));
-				if (snap_enabled || mb->is_ctrl_pressed()) {
+				if (snap_enabled || mb->is_command_or_control_pressed()) {
 					new_pos.x = Math::snapped(new_pos.x, 1.0 / snap_count);
 					new_pos.y = Math::snapped(new_pos.y - curve->get_min_value(), curve->get_range() / snap_count) + curve->get_min_value();
 				}
@@ -276,7 +278,7 @@ void CurveEdit::gui_input(const Ref<InputEvent> &p_event) {
 					// Drag point.
 					Vector2 new_pos = get_world_pos(mpos).clamp(Vector2(0.0, curve->get_min_value()), Vector2(1.0, curve->get_max_value()));
 
-					if (snap_enabled || mm->is_ctrl_pressed()) {
+					if (snap_enabled || mm->is_command_or_control_pressed()) {
 						new_pos.x = Math::snapped(new_pos.x, 1.0 / snap_count);
 						new_pos.y = Math::snapped(new_pos.y - curve->get_min_value(), curve->get_range() / snap_count) + curve->get_min_value();
 					}
@@ -650,8 +652,8 @@ void CurveEdit::set_selected_index(int p_index) {
 }
 
 void CurveEdit::update_view_transform() {
-	Ref<Font> font = get_theme_font(SNAME("font"), SNAME("Label"));
-	int font_size = get_theme_font_size(SNAME("font_size"), SNAME("Label"));
+	Ref<Font> font = get_theme_font(SceneStringName(font), SNAME("Label"));
+	int font_size = get_theme_font_size(SceneStringName(font_size), SNAME("Label"));
 
 	const real_t margin = font->get_height(font_size) + 2 * EDSCALE;
 
@@ -780,7 +782,7 @@ void CurveEdit::_redraw() {
 	// Draw background.
 
 	Vector2 view_size = get_rect().size;
-	draw_style_box(get_theme_stylebox(SNAME("panel"), SNAME("Tree")), Rect2(Point2(), view_size));
+	draw_style_box(get_theme_stylebox(SceneStringName(panel), SNAME("Tree")), Rect2(Point2(), view_size));
 
 	// Draw snapping grid, then primary grid.
 	draw_set_transform_matrix(_world_to_view);
@@ -812,10 +814,10 @@ void CurveEdit::_redraw() {
 	// Draw number markings.
 	draw_set_transform_matrix(Transform2D());
 
-	Ref<Font> font = get_theme_font(SNAME("font"), SNAME("Label"));
-	int font_size = get_theme_font_size(SNAME("font_size"), SNAME("Label"));
+	Ref<Font> font = get_theme_font(SceneStringName(font), SNAME("Label"));
+	int font_size = get_theme_font_size(SceneStringName(font_size), SNAME("Label"));
 	float font_height = font->get_height(font_size);
-	Color text_color = get_theme_color(SNAME("font_color"), EditorStringName(Editor));
+	Color text_color = get_theme_color(SceneStringName(font_color), EditorStringName(Editor));
 
 	for (int i = 0; i <= grid_steps.x; ++i) {
 		real_t x = i * step_size.x;
@@ -833,8 +835,8 @@ void CurveEdit::_redraw() {
 	// The scaling up ensures that the curve rendering doesn't break when we use a quad line to draw it.
 	draw_set_transform_matrix(Transform2D(0, get_view_pos(Vector2(0, 0))));
 
-	const Color line_color = get_theme_color(SNAME("font_color"), EditorStringName(Editor));
-	const Color edge_line_color = get_theme_color(SNAME("font_color"), EditorStringName(Editor)) * Color(1, 1, 1, 0.75);
+	const Color line_color = get_theme_color(SceneStringName(font_color), EditorStringName(Editor));
+	const Color edge_line_color = get_theme_color(SceneStringName(font_color), EditorStringName(Editor)) * Color(1, 1, 1, 0.75);
 
 	CanvasItemPlotCurve plot_func(*this, line_color, edge_line_color);
 	plot_curve_accurate(**curve, 2.f, (get_view_pos(Vector2(1, curve->get_max_value())) - get_view_pos(Vector2(0, curve->get_min_value()))) / Vector2(1, curve->get_range()), plot_func);
@@ -844,7 +846,7 @@ void CurveEdit::_redraw() {
 
 	bool shift_pressed = Input::get_singleton()->is_key_pressed(Key::SHIFT);
 
-	const Color point_color = get_theme_color(SNAME("font_color"), EditorStringName(Editor));
+	const Color point_color = get_theme_color(SceneStringName(font_color), EditorStringName(Editor));
 
 	for (int i = 0; i < curve->get_point_count(); ++i) {
 		Vector2 pos = get_view_pos(curve->get_point_position(i));
@@ -865,7 +867,7 @@ void CurveEdit::_redraw() {
 		// Draw tangents if not dragging a point, or if holding a point without having moved it yet.
 		if (grabbing == GRAB_NONE || initial_grab_pos == point_pos || selected_tangent_index != TANGENT_NONE) {
 			const Color selected_tangent_color = get_theme_color(SNAME("accent_color"), EditorStringName(Editor)).darkened(0.25);
-			const Color tangent_color = get_theme_color(SNAME("font_color"), EditorStringName(Editor)).darkened(0.25);
+			const Color tangent_color = get_theme_color(SceneStringName(font_color), EditorStringName(Editor)).darkened(0.25);
 
 			if (selected_index != 0) {
 				Vector2 control_pos = get_tangent_view_pos(selected_index, TANGENT_LEFT);
@@ -1001,7 +1003,7 @@ CurveEditor::CurveEditor() {
 	snap_button->set_tooltip_text(TTR("Toggle Grid Snap"));
 	snap_button->set_toggle_mode(true);
 	toolbar->add_child(snap_button);
-	snap_button->connect("toggled", callable_mp(this, &CurveEditor::_set_snap_enabled));
+	snap_button->connect(SceneStringName(toggled), callable_mp(this, &CurveEditor::_set_snap_enabled));
 
 	toolbar->add_child(memnew(VSeparator));
 
@@ -1011,14 +1013,14 @@ CurveEditor::CurveEditor() {
 	snap_count_edit->set_value(DEFAULT_SNAP);
 	snap_count_edit->set_custom_minimum_size(Size2(65 * EDSCALE, 0));
 	toolbar->add_child(snap_count_edit);
-	snap_count_edit->connect("value_changed", callable_mp(this, &CurveEditor::_set_snap_count));
+	snap_count_edit->connect(SceneStringName(value_changed), callable_mp(this, &CurveEditor::_set_snap_count));
 
 	presets_button = memnew(MenuButton);
 	presets_button->set_text(TTR("Presets"));
 	presets_button->set_switch_on_hover(true);
 	presets_button->set_h_size_flags(SIZE_EXPAND | SIZE_SHRINK_END);
 	toolbar->add_child(presets_button);
-	presets_button->get_popup()->connect("id_pressed", callable_mp(this, &CurveEditor::_on_preset_item_selected));
+	presets_button->get_popup()->connect(SceneStringName(id_pressed), callable_mp(this, &CurveEditor::_on_preset_item_selected));
 
 	curve_editor_rect = memnew(CurveEdit);
 	add_child(curve_editor_rect);
@@ -1041,7 +1043,7 @@ bool EditorInspectorPluginCurve::can_handle(Object *p_object) {
 
 void EditorInspectorPluginCurve::parse_begin(Object *p_object) {
 	Curve *curve = Object::cast_to<Curve>(p_object);
-	ERR_FAIL_COND(!curve);
+	ERR_FAIL_NULL(curve);
 	Ref<Curve> c(curve);
 
 	CurveEditor *editor = memnew(CurveEditor);
@@ -1069,16 +1071,13 @@ Ref<Texture2D> CurvePreviewGenerator::generate(const Ref<Resource> &p_from, cons
 		return Ref<Texture2D>();
 	}
 
-	Size2 thumbnail_size = p_size * EDSCALE;
 	Ref<Image> img_ref;
 	img_ref.instantiate();
 	Image &im = **img_ref;
-	im.initialize_data(thumbnail_size.x, thumbnail_size.y, false, Image::FORMAT_RGBA8);
+	im.initialize_data(p_size.x, p_size.y, false, Image::FORMAT_RGBA8);
 
-	Color bg_color(0.1, 0.1, 0.1, 1.0);
-	Color line_color(0.8, 0.8, 0.8, 1.0);
+	Color line_color = EditorInterface::get_singleton()->get_editor_theme()->get_color(SceneStringName(font_color), EditorStringName(Editor));
 
-	im.fill(bg_color);
 	// Set the first pixel of the thumbnail.
 	float v = (curve->sample_baked(0) - curve->get_min_value()) / curve->get_range();
 	int y = CLAMP(im.get_height() - v * im.get_height(), 0, im.get_height() - 1);

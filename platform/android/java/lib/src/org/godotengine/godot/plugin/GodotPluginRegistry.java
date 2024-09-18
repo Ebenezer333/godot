@@ -42,8 +42,9 @@ import android.util.Log;
 import androidx.annotation.Nullable;
 
 import java.lang.reflect.Constructor;
-import java.lang.reflect.InvocationTargetException;
 import java.util.Collection;
+import java.util.Collections;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -64,9 +65,8 @@ public final class GodotPluginRegistry {
 	private static GodotPluginRegistry instance;
 	private final ConcurrentHashMap<String, GodotPlugin> registry;
 
-	private GodotPluginRegistry(Godot godot) {
+	private GodotPluginRegistry() {
 		registry = new ConcurrentHashMap<>();
-		loadPlugins(godot);
 	}
 
 	/**
@@ -83,6 +83,9 @@ public final class GodotPluginRegistry {
 	 * Retrieve the full set of loaded plugins.
 	 */
 	public Collection<GodotPlugin> getAllPlugins() {
+		if (registry.isEmpty()) {
+			return Collections.emptyList();
+		}
 		return registry.values();
 	}
 
@@ -93,12 +96,14 @@ public final class GodotPluginRegistry {
 	 * documentation.
 	 *
 	 * @param godot Godot instance
+	 * @param runtimePlugins Set of plugins provided at runtime for registration
 	 * @return A singleton instance of {@link GodotPluginRegistry}. This ensures that only one instance
 	 * of each Godot Android plugins is available at runtime.
 	 */
-	public static GodotPluginRegistry initializePluginRegistry(Godot godot) {
+	public static GodotPluginRegistry initializePluginRegistry(Godot godot, Set<GodotPlugin> runtimePlugins) {
 		if (instance == null) {
-			instance = new GodotPluginRegistry(godot);
+			instance = new GodotPluginRegistry();
+			instance.loadPlugins(godot, runtimePlugins);
 		}
 
 		return instance;
@@ -108,7 +113,7 @@ public final class GodotPluginRegistry {
 	 * Return the plugin registry if it's initialized.
 	 * Throws a {@link IllegalStateException} exception if not.
 	 *
-	 * @throws IllegalStateException if {@link GodotPluginRegistry#initializePluginRegistry(Godot)} has not been called prior to calling this method.
+	 * @throws IllegalStateException if {@link GodotPluginRegistry#initializePluginRegistry(Godot, Set)} has not been called prior to calling this method.
 	 */
 	public static GodotPluginRegistry getPluginRegistry() throws IllegalStateException {
 		if (instance == null) {
@@ -118,7 +123,16 @@ public final class GodotPluginRegistry {
 		return instance;
 	}
 
-	private void loadPlugins(Godot godot) {
+	private void loadPlugins(Godot godot, Set<GodotPlugin> runtimePlugins) {
+		// Register the runtime plugins
+		if (runtimePlugins != null && !runtimePlugins.isEmpty()) {
+			for (GodotPlugin plugin : runtimePlugins) {
+				Log.i(TAG, "Registering runtime plugin " + plugin.getPluginName());
+				registry.put(plugin.getPluginName(), plugin);
+			}
+		}
+
+		// Register the manifest plugins
 		try {
 			final Activity activity = godot.getActivity();
 			ApplicationInfo appInfo = activity

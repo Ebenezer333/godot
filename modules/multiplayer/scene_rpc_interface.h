@@ -35,6 +35,8 @@
 #include "scene/main/multiplayer_api.h"
 
 class SceneMultiplayer;
+class SceneCacheInterface;
+class SceneReplicationInterface;
 class Node;
 
 class SceneRPCInterface : public RefCounted {
@@ -77,6 +79,9 @@ private:
 	};
 
 	SceneMultiplayer *multiplayer = nullptr;
+	SceneCacheInterface *multiplayer_cache = nullptr;
+	SceneReplicationInterface *multiplayer_replicator = nullptr;
+
 	Vector<uint8_t> packet_cache;
 
 	HashMap<ObjectID, RPCConfigCache> rpc_cache;
@@ -86,6 +91,8 @@ private:
 #endif
 
 protected:
+	static bool _sort_rpc_names(const Variant &p_l, const Variant &p_r);
+
 	void _process_rpc(Node *p_node, const uint16_t p_rpc_method_id, int p_from, const uint8_t *p_packet, int p_packet_len, int p_offset);
 
 	void _send_rpc(Node *p_from, int p_to, uint16_t p_rpc_id, const RPCConfig &p_config, const StringName &p_name, const Variant **p_arg, int p_argcount);
@@ -99,7 +106,11 @@ public:
 	void process_rpc(int p_from, const uint8_t *p_packet, int p_packet_len);
 	String get_rpc_md5(const Object *p_obj);
 
-	SceneRPCInterface(SceneMultiplayer *p_multiplayer) { multiplayer = p_multiplayer; }
+	SceneRPCInterface(SceneMultiplayer *p_multiplayer, SceneCacheInterface *p_cache, SceneReplicationInterface *p_replicator) {
+		multiplayer = p_multiplayer;
+		multiplayer_cache = p_cache;
+		multiplayer_replicator = p_replicator;
+	}
 };
 
 #endif // SCENE_RPC_INTERFACE_H

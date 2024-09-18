@@ -173,7 +173,7 @@ String ShaderPreprocessor::Tokenizer::get_identifier(bool *r_is_cursor, bool p_s
 	}
 
 	String id = vector_to_string(text);
-	if (!id.is_valid_identifier()) {
+	if (!id.is_valid_ascii_identifier()) {
 		return "";
 	}
 
@@ -747,7 +747,7 @@ void ShaderPreprocessor::process_include(Tokenizer *p_tokenizer) {
 	processor.preprocess(state, included, result);
 	add_to_output("@@>" + real_path + "\n"); // Add token for enter include path
 	add_to_output(result);
-	add_to_output("\n@@<\n"); // Add token for exit include path
+	add_to_output("\n@@<" + real_path + "\n"); // Add token for exit include path.
 
 	// Reset to last include if there are no errors. We want to use this as context.
 	if (state->error.is_empty()) {

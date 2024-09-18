@@ -33,6 +33,7 @@
 #include "core/string/translation.h"
 #include "scene/gui/box_container.h"
 #include "scene/gui/label.h"
+#include "scene/theme/theme_db.h"
 
 bool GraphNode::_set(const StringName &p_name, const Variant &p_value) {
 	String str = p_name;
@@ -129,8 +130,8 @@ bool GraphNode::_get(const StringName &p_name, Variant &r_ret) const {
 void GraphNode::_get_property_list(List<PropertyInfo> *p_list) const {
 	int idx = 0;
 	for (int i = 0; i < get_child_count(false); i++) {
-		Control *child = Object::cast_to<Control>(get_child(i, false));
-		if (!child || child->is_set_as_top_level()) {
+		Control *child = as_sortable_control(get_child(i, false), SortableVisbilityMode::IGNORE);
+		if (!child) {
 			continue;
 		}
 
@@ -151,8 +152,8 @@ void GraphNode::_get_property_list(List<PropertyInfo> *p_list) const {
 
 void GraphNode::_resort() {
 	Size2 new_size = get_size();
-	Ref<StyleBox> sb_panel = get_theme_stylebox(SNAME("panel"));
-	Ref<StyleBox> sb_titlebar = get_theme_stylebox(SNAME("titlebar"));
+	Ref<StyleBox> sb_panel = theme_cache.panel;
+	Ref<StyleBox> sb_titlebar = theme_cache.titlebar;
 
 	// Resort titlebar first.
 	Size2 titlebar_size = Size2(new_size.width, titlebar_hbox->get_size().height);
@@ -164,8 +165,8 @@ void GraphNode::_resort() {
 	Size2i titlebar_min_size = titlebar_hbox->get_combined_minimum_size();
 
 	// First pass, determine minimum size AND amount of stretchable elements.
-	Ref<StyleBox> sb_slot = get_theme_stylebox(SNAME("slot"));
-	int separation = get_theme_constant(SNAME("separation"));
+	Ref<StyleBox> sb_slot = theme_cache.slot;
+	int separation = theme_cache.separation;
 
 	int children_count = 0;
 	int stretch_min = 0;
@@ -174,9 +175,8 @@ void GraphNode::_resort() {
 	HashMap<Control *, _MinSizeCache> min_size_cache;
 
 	for (int i = 0; i < get_child_count(false); i++) {
-		Control *child = Object::cast_to<Control>(get_child(i, false));
-
-		if (!child || !child->is_visible_in_tree() || child->is_set_as_top_level()) {
+		Control *child = as_sortable_control(get_child(i, false));
+		if (!child) {
 			continue;
 		}
 
@@ -217,8 +217,8 @@ void GraphNode::_resort() {
 		bool refit_successful = true;
 
 		for (int i = 0; i < get_child_count(false); i++) {
-			Control *child = Object::cast_to<Control>(get_child(i, false));
-			if (!child || !child->is_visible_in_tree() || child->is_set_as_top_level()) {
+			Control *child = as_sortable_control(get_child(i, false));
+			if (!child) {
 				continue;
 			}
 
@@ -255,8 +255,8 @@ void GraphNode::_resort() {
 	int width = new_size.width - sb_panel->get_minimum_size().width;
 	int valid_children_idx = 0;
 	for (int i = 0; i < get_child_count(false); i++) {
-		Control *child = Object::cast_to<Control>(get_child(i, false));
-		if (!child || !child->is_visible_in_tree() || child->is_set_as_top_level()) {
+		Control *child = as_sortable_control(get_child(i, false));
+		if (!child) {
 			continue;
 		}
 
@@ -300,7 +300,7 @@ void GraphNode::draw_port(int p_slot_index, Point2i p_pos, bool p_left, const Co
 
 	Point2 icon_offset;
 	if (!port_icon.is_valid()) {
-		port_icon = get_theme_icon(SNAME("port"));
+		port_icon = theme_cache.port;
 	}
 
 	icon_offset = -port_icon->get_size() * 0.5;
@@ -311,19 +311,15 @@ void GraphNode::_notification(int p_what) {
 	switch (p_what) {
 		case NOTIFICATION_DRAW: {
 			// Used for layout calculations.
-			Ref<StyleBox> sb_panel = get_theme_stylebox(SNAME("panel"));
-			Ref<StyleBox> sb_titlebar = get_theme_stylebox(SNAME("titlebar"));
+			Ref<StyleBox> sb_panel = theme_cache.panel;
+			Ref<StyleBox> sb_titlebar = theme_cache.titlebar;
 			// Used for drawing.
-			Ref<StyleBox> sb_to_draw_panel = get_theme_stylebox(selected ? SNAME("panel_selected") : SNAME("panel"));
-			Ref<StyleBox> sb_to_draw_titlebar = get_theme_stylebox(selected ? SNAME("titlebar_selected") : SNAME("titlebar"));
+			Ref<StyleBox> sb_to_draw_panel = selected ? theme_cache.panel_selected : theme_cache.panel;
+			Ref<StyleBox> sb_to_draw_titlebar = selected ? theme_cache.titlebar_selected : theme_cache.titlebar;
 
-			Ref<StyleBox> sb_slot = get_theme_stylebox(SNAME("slot"));
+			Ref<StyleBox> sb_slot = theme_cache.slot;
 
-			int port_h_offset = get_theme_constant(SNAME("port_h_offset"));
-
-			Ref<Texture2D> resizer_icon = get_theme_icon(SNAME("resizer"));
-
-			Color resizer_color = get_theme_color(SNAME("resizer_color"));
+			int port_h_offset = theme_cache.port_h_offset;
 
 			Rect2 titlebar_rect(Point2(), titlebar_hbox->get_size() + sb_titlebar->get_minimum_size());
 			Size2 body_size = get_size();
@@ -339,7 +335,8 @@ void GraphNode::_notification(int p_what) {
 
 			int width = get_size().width - sb_panel->get_minimum_size().x;
 
-			if (get_child_count() > 0) {
+			// Take the HboxContainer child into account.
+			if (get_child_count(false) > 0) {
 				int slot_index = 0;
 				for (const KeyValue<int, Slot> &E : slot_table) {
 					if (E.key < 0 || E.key >= slot_y_cache.size()) {
@@ -377,7 +374,7 @@ void GraphNode::_notification(int p_what) {
 			}
 
 			if (resizable) {
-				draw_texture(resizer_icon, get_size() - resizer_icon->get_size(), resizer_color);
+				draw_texture(theme_cache.resizer, get_size() - theme_cache.resizer->get_size(), theme_cache.resizer_color);
 			}
 		} break;
 	}
@@ -485,6 +482,27 @@ Color GraphNode::get_slot_color_left(int p_slot_index) const {
 	return slot_table[p_slot_index].color_left;
 }
 
+void GraphNode::set_slot_custom_icon_left(int p_slot_index, const Ref<Texture2D> &p_custom_icon) {
+	ERR_FAIL_COND_MSG(!slot_table.has(p_slot_index), vformat("Cannot set custom_port_icon_left for the slot with index '%d' because it hasn't been enabled.", p_slot_index));
+
+	if (slot_table[p_slot_index].custom_port_icon_left == p_custom_icon) {
+		return;
+	}
+
+	slot_table[p_slot_index].custom_port_icon_left = p_custom_icon;
+	queue_redraw();
+	port_pos_dirty = true;
+
+	emit_signal(SNAME("slot_updated"), p_slot_index);
+}
+
+Ref<Texture2D> GraphNode::get_slot_custom_icon_left(int p_slot_index) const {
+	if (!slot_table.has(p_slot_index)) {
+		return Ref<Texture2D>();
+	}
+	return slot_table[p_slot_index].custom_port_icon_left;
+}
+
 bool GraphNode::is_slot_enabled_right(int p_slot_index) const {
 	if (!slot_table.has(p_slot_index)) {
 		return false;
@@ -548,6 +566,27 @@ Color GraphNode::get_slot_color_right(int p_slot_index) const {
 	return slot_table[p_slot_index].color_right;
 }
 
+void GraphNode::set_slot_custom_icon_right(int p_slot_index, const Ref<Texture2D> &p_custom_icon) {
+	ERR_FAIL_COND_MSG(!slot_table.has(p_slot_index), vformat("Cannot set custom_port_icon_right for the slot with index '%d' because it hasn't been enabled.", p_slot_index));
+
+	if (slot_table[p_slot_index].custom_port_icon_right == p_custom_icon) {
+		return;
+	}
+
+	slot_table[p_slot_index].custom_port_icon_right = p_custom_icon;
+	queue_redraw();
+	port_pos_dirty = true;
+
+	emit_signal(SNAME("slot_updated"), p_slot_index);
+}
+
+Ref<Texture2D> GraphNode::get_slot_custom_icon_right(int p_slot_index) const {
+	if (!slot_table.has(p_slot_index)) {
+		return Ref<Texture2D>();
+	}
+	return slot_table[p_slot_index].custom_port_icon_right;
+}
+
 bool GraphNode::is_slot_draw_stylebox(int p_slot_index) const {
 	if (!slot_table.has(p_slot_index)) {
 		return false;
@@ -565,17 +604,25 @@ void GraphNode::set_slot_draw_stylebox(int p_slot_index, bool p_enable) {
 	emit_signal(SNAME("slot_updated"), p_slot_index);
 }
 
-Size2 GraphNode::get_minimum_size() const {
-	Ref<StyleBox> sb_panel = get_theme_stylebox(SNAME("panel"));
-	Ref<StyleBox> sb_titlebar = get_theme_stylebox(SNAME("titlebar"));
-	Ref<StyleBox> sb_slot = get_theme_stylebox(SNAME("slot"));
+void GraphNode::set_ignore_invalid_connection_type(bool p_ignore) {
+	ignore_invalid_connection_type = p_ignore;
+}
 
-	int separation = get_theme_constant(SNAME("separation"));
+bool GraphNode::is_ignoring_valid_connection_type() const {
+	return ignore_invalid_connection_type;
+}
+
+Size2 GraphNode::get_minimum_size() const {
+	Ref<StyleBox> sb_panel = theme_cache.panel;
+	Ref<StyleBox> sb_titlebar = theme_cache.titlebar;
+	Ref<StyleBox> sb_slot = theme_cache.slot;
+
+	int separation = theme_cache.separation;
 	Size2 minsize = titlebar_hbox->get_minimum_size() + sb_titlebar->get_minimum_size();
 
 	for (int i = 0; i < get_child_count(false); i++) {
-		Control *child = Object::cast_to<Control>(get_child(i, false));
-		if (!child || !child->is_visible() || child->is_set_as_top_level()) {
+		Control *child = as_sortable_control(get_child(i, false));
+		if (!child) {
 			continue;
 		}
 
@@ -599,45 +646,47 @@ Size2 GraphNode::get_minimum_size() const {
 }
 
 void GraphNode::_port_pos_update() {
-	int edgeofs = get_theme_constant(SNAME("port_h_offset"));
-	int separation = get_theme_constant(SNAME("separation"));
+	int edgeofs = theme_cache.port_h_offset;
+	int separation = theme_cache.separation;
 
-	Ref<StyleBox> sb_panel = get_theme_stylebox(SNAME("panel"));
-	Ref<StyleBox> sb_titlebar = get_theme_stylebox(SNAME("titlebar"));
+	Ref<StyleBox> sb_panel = theme_cache.panel;
+	Ref<StyleBox> sb_titlebar = theme_cache.titlebar;
 
 	left_port_cache.clear();
 	right_port_cache.clear();
 	int vertical_ofs = titlebar_hbox->get_size().height + sb_titlebar->get_minimum_size().height + sb_panel->get_margin(SIDE_TOP);
+	int slot_index = 0;
 
 	for (int i = 0; i < get_child_count(false); i++) {
-		Control *child = Object::cast_to<Control>(get_child(i, false));
-		if (!child || child->is_set_as_top_level()) {
+		Control *child = as_sortable_control(get_child(i, false), SortableVisbilityMode::IGNORE);
+		if (!child) {
 			continue;
 		}
 
 		Size2i size = child->get_rect().size;
 
-		if (slot_table.has(i)) {
-			if (slot_table[i].enable_left) {
+		if (slot_table.has(slot_index)) {
+			if (slot_table[slot_index].enable_left) {
 				PortCache port_cache;
 				port_cache.pos = Point2i(edgeofs, vertical_ofs + size.height / 2);
-				port_cache.type = slot_table[i].type_left;
-				port_cache.color = slot_table[i].color_left;
-				port_cache.slot_index = child->get_index(); // Index with internal nodes included.
+				port_cache.type = slot_table[slot_index].type_left;
+				port_cache.color = slot_table[slot_index].color_left;
+				port_cache.slot_index = slot_index;
 				left_port_cache.push_back(port_cache);
 			}
-			if (slot_table[i].enable_right) {
+			if (slot_table[slot_index].enable_right) {
 				PortCache port_cache;
 				port_cache.pos = Point2i(get_size().width - edgeofs, vertical_ofs + size.height / 2);
-				port_cache.type = slot_table[i].type_right;
-				port_cache.color = slot_table[i].color_right;
-				port_cache.slot_index = child->get_index(); // Index with internal nodes included.
+				port_cache.type = slot_table[slot_index].type_right;
+				port_cache.color = slot_table[slot_index].color_right;
+				port_cache.slot_index = slot_index;
 				right_port_cache.push_back(port_cache);
 			}
 		}
 
 		vertical_ofs += separation;
 		vertical_ofs += size.height;
+		slot_index++;
 	}
 
 	port_pos_dirty = false;
@@ -754,9 +803,7 @@ HBoxContainer *GraphNode::get_titlebar_hbox() {
 
 Control::CursorShape GraphNode::get_cursor_shape(const Point2 &p_pos) const {
 	if (resizable) {
-		Ref<Texture2D> resizer = get_theme_icon(SNAME("resizer"));
-
-		if (resizing || (p_pos.x > get_size().x - resizer->get_width() && p_pos.y > get_size().y - resizer->get_height())) {
+		if (resizing || (p_pos.x > get_size().x - theme_cache.resizer->get_width() && p_pos.y > get_size().y - theme_cache.resizer->get_height())) {
 			return CURSOR_FDIAGSIZE;
 		}
 	}
@@ -802,6 +849,9 @@ void GraphNode::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_slot_color_left", "slot_index", "color"), &GraphNode::set_slot_color_left);
 	ClassDB::bind_method(D_METHOD("get_slot_color_left", "slot_index"), &GraphNode::get_slot_color_left);
 
+	ClassDB::bind_method(D_METHOD("set_slot_custom_icon_left", "slot_index", "custom_icon"), &GraphNode::set_slot_custom_icon_left);
+	ClassDB::bind_method(D_METHOD("get_slot_custom_icon_left", "slot_index"), &GraphNode::get_slot_custom_icon_left);
+
 	ClassDB::bind_method(D_METHOD("is_slot_enabled_right", "slot_index"), &GraphNode::is_slot_enabled_right);
 	ClassDB::bind_method(D_METHOD("set_slot_enabled_right", "slot_index", "enable"), &GraphNode::set_slot_enabled_right);
 
@@ -811,8 +861,14 @@ void GraphNode::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_slot_color_right", "slot_index", "color"), &GraphNode::set_slot_color_right);
 	ClassDB::bind_method(D_METHOD("get_slot_color_right", "slot_index"), &GraphNode::get_slot_color_right);
 
+	ClassDB::bind_method(D_METHOD("set_slot_custom_icon_right", "slot_index", "custom_icon"), &GraphNode::set_slot_custom_icon_right);
+	ClassDB::bind_method(D_METHOD("get_slot_custom_icon_right", "slot_index"), &GraphNode::get_slot_custom_icon_right);
+
 	ClassDB::bind_method(D_METHOD("is_slot_draw_stylebox", "slot_index"), &GraphNode::is_slot_draw_stylebox);
 	ClassDB::bind_method(D_METHOD("set_slot_draw_stylebox", "slot_index", "enable"), &GraphNode::set_slot_draw_stylebox);
+
+	ClassDB::bind_method(D_METHOD("set_ignore_invalid_connection_type", "ignore"), &GraphNode::set_ignore_invalid_connection_type);
+	ClassDB::bind_method(D_METHOD("is_ignoring_valid_connection_type"), &GraphNode::is_ignoring_valid_connection_type);
 
 	ClassDB::bind_method(D_METHOD("get_input_port_count"), &GraphNode::get_input_port_count);
 	ClassDB::bind_method(D_METHOD("get_input_port_position", "port_idx"), &GraphNode::get_input_port_position);
@@ -829,7 +885,22 @@ void GraphNode::_bind_methods() {
 	GDVIRTUAL_BIND(_draw_port, "slot_index", "position", "left", "color")
 
 	ADD_PROPERTY(PropertyInfo(Variant::STRING, "title"), "set_title", "get_title");
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "ignore_invalid_connection_type"), "set_ignore_invalid_connection_type", "is_ignoring_valid_connection_type");
+
 	ADD_SIGNAL(MethodInfo("slot_updated", PropertyInfo(Variant::INT, "slot_index")));
+
+	BIND_THEME_ITEM(Theme::DATA_TYPE_STYLEBOX, GraphNode, panel);
+	BIND_THEME_ITEM(Theme::DATA_TYPE_STYLEBOX, GraphNode, panel_selected);
+	BIND_THEME_ITEM(Theme::DATA_TYPE_STYLEBOX, GraphNode, titlebar);
+	BIND_THEME_ITEM(Theme::DATA_TYPE_STYLEBOX, GraphNode, titlebar_selected);
+	BIND_THEME_ITEM(Theme::DATA_TYPE_STYLEBOX, GraphNode, slot);
+
+	BIND_THEME_ITEM(Theme::DATA_TYPE_CONSTANT, GraphNode, separation);
+	BIND_THEME_ITEM(Theme::DATA_TYPE_CONSTANT, GraphNode, port_h_offset);
+
+	BIND_THEME_ITEM(Theme::DATA_TYPE_ICON, GraphNode, port);
+	BIND_THEME_ITEM(Theme::DATA_TYPE_ICON, GraphNode, resizer);
+	BIND_THEME_ITEM(Theme::DATA_TYPE_COLOR, GraphNode, resizer_color);
 }
 
 GraphNode::GraphNode() {
